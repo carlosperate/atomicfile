@@ -6,5 +6,20 @@ python:
     - "3.4"
     - "3.5"
     - "pypy"
+
+# Travis can building for Linux (Ubuntu 14.04 x64) and OS X (El Capitan)
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+      sudo: required
+      language: generic
+
+    # To maximise compatibility pick earliest image, 10.9 to be removed on 20/01/2017
+    - os: osx
+      osx_image: beta-xcode6.1
+      sudo: required
+      language: generic
+
 script: python setup.py test
 
