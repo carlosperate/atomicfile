@@ -7,19 +7,20 @@ python:
     - "3.5"
     - "pypy"
 
-# Travis can building for Linux (Ubuntu 14.04 x64) and OS X (El Capitan)
+# Travis can building for Linux (Ubuntu 14.04 x64) and OS X (10.10)
 matrix:
   include:
     - os: linux
       dist: trusty
       sudo: required
       language: generic
-
-    # To maximise compatibility pick earliest image, 10.9 to be removed on 20/01/2017
     - os: osx
-      osx_image: beta-xcode6.1
+      osx_image: xcode6.4
       sudo: required
       language: generic
 
-script: python setup.py test
+script:
+  - python --version
+  - python -c "import struct; print(struct.calcsize('P') * 8)"
+  - python setup.py test
 
