@@ -1,46 +1,49 @@
-# encoding: utf-8
-
+# -*- coding: utf-8 -*-
 import errno
 import os
 import tempfile
 import codecs
 
 
-umask = os.umask(0)
-os.umask(umask)
+def _get_permissions(file_path):
+    """
+    Get the file permissions, if it can't access them returns system default.
+    """
+    try:
+        st_mode = os.lstat(file_path).st_mode & 0o777
+    except OSError as err:
+        if err.errno != errno.ENOENT:
+            raise
+        current_umask = os.umask(0)
+        os.umask(current_umask)
+        st_mode = (~current_umask) & 0o777
+    return st_mode
 
 
-def _maketemp(name, createmode=None):
+def _make_temp(name, permissions=None):
     """
     Create a temporary file with the filename similar the given ``name``.
-    The permission bits are copied from the original file or ``createmode``.
+    The permission bits are copied from the original file or ``permissions``.
 
     Returns: the name of the temporary file.
     """
     d, fn = os.path.split(name)
-    fd, tempname = tempfile.mkstemp(prefix=".%s-" % fn, dir=d)
+    fd, temp_name = tempfile.mkstemp(prefix=".%s-" % fn, dir=d)
     os.close(fd)
 
-    # Temporary files are created with mode 0600, which is usually not
-    # what we want. If the original file already exists, just copy its mode.
-    # Otherwise, manually obey umask.
-    try:
-        st_mode = os.lstat(name).st_mode & 0o777
-    except OSError as err:
-        if err.errno != errno.ENOENT:
-            raise
-        st_mode = createmode
-        if st_mode is None:
-            st_mode = ~umask
-        st_mode &= 0o666
-    os.chmod(tempname, st_mode)
+    # Temporary files are created with mode 0600, which is usually not what we
+    # want. Apply the function argument value, or copy original file mode.
+    st_mode = permissions if permissions else _get_permissions(name)
+    st_mode |= 0o600
+    # On Windows, only the Owner Read and Write bits (0600) are affected.
+    os.chmod(temp_name, st_mode)
 
-    return tempname
+    return temp_name
 
 
 class AtomicFile(object):
     """
-    Writeable file object that atomically writes a file.
+    Writable file object that atomically writes a file.
 
     All writes will go to a temporary file.
     Call ``close()`` when you are done writing, and AtomicFile will rename
@@ -50,13 +53,15 @@ class AtomicFile(object):
     If an ``encoding`` argument is specified, codecs.open will be called to open
     the file in the wanted encoding.
     """
-    def __init__(self, name, mode="w+b", createmode=None, encoding=None):
-        self.__name = name  # permanent name
-        self._tempname = _maketemp(name, createmode=createmode)
+    def __init__(self, name, mode="w+b", permissions=None, encoding=None):
+        self._name = name  # permanent name
+        self._permissions = permissions if permissions \
+            else _get_permissions(self._name)
+        self._temp_name = _make_temp(name, permissions=self._permissions)
         if encoding:
-            self._fp = codecs.open(self._tempname, mode, encoding)
+            self._fp = codecs.open(self._temp_name, mode, encoding)
         else:
-            self._fp = open(self._tempname, mode)
+            self._fp = open(self._temp_name, mode)
 
         # delegated methods
         self.write = self._fp.write
@@ -74,29 +79,32 @@ class AtomicFile(object):
         if not self._fp.closed:
             self._fp.close()
             try:
-                os.rename(self._tempname, self.__name)
+                os.rename(self._temp_name, self._name)
             except OSError as e:
                 if e.errno != errno.EEXIST:
                     raise
-                # Fall back to move original file and rename temp to name again
-                temp_original = "%s_previous" % self.__name
-                if os.path.isfile(temp_original):
+                # Fall back to move original file and rename again
+                original_to_remove = "%s.prev.bak" % self._name
+                if os.path.isfile(original_to_remove):
+                    # First make sure you have write access, then delete it
+                    os.chmod(original_to_remove, 0o777)
                     try:
-                        os.unlink(temp_original)
+                        os.unlink(original_to_remove)
                     except OSError:
                         raise
-                os.rename(self.__name, temp_original)
-                os.rename(self._tempname, self.__name)
+                os.rename(self._name, original_to_remove)
+                os.rename(self._temp_name, self._name)
+                os.chmod(original_to_remove, 0o666)
                 try:
-                    os.unlink(self._tempname)
-                    os.unlink(temp_original)
+                    os.unlink(original_to_remove)
                 except OSError:
                     pass
+            os.chmod(self._name, self._permissions)
 
     def discard(self):
         if not self._fp.closed:
             try:
-                os.unlink(self._tempname)
+                os.unlink(self._temp_name)
             except OSError:
                 pass
             self._fp.close()
