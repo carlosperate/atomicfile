@@ -73,7 +73,25 @@ class AtomicFile(object):
     def close(self):
         if not self._fp.closed:
             self._fp.close()
-            os.rename(self._tempname, self.__name)
+            try:
+                os.rename(self._tempname, self.__name)
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise
+                # Fall back to move original file and rename temp to name again
+                temp_original = "%s_previous" % self.__name
+                if os.path.isfile(temp_original):
+                    try:
+                        os.unlink(temp_original)
+                    except OSError:
+                        raise
+                os.rename(self.__name, temp_original)
+                os.rename(self._tempname, self.__name)
+                try:
+                    os.unlink(self._tempname)
+                    os.unlink(temp_original)
+                except OSError:
+                    pass
 
     def discard(self):
         if not self._fp.closed:
