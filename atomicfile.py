@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import errno
 import os
+import sys
 import tempfile
 import codecs
 
@@ -53,7 +54,8 @@ class AtomicFile(object):
     If an ``encoding`` argument is specified, codecs.open will be called to open
     the file in the wanted encoding.
     """
-    def __init__(self, name, mode="w+b", permissions=None, encoding=None):
+    def __init__(self, name, mode="w+b", permissions=None, encoding=None,
+                 newline=None):
         self._name = name  # permanent name
         self._permissions = permissions if permissions \
             else _get_permissions(self._name)
@@ -61,7 +63,10 @@ class AtomicFile(object):
         if encoding:
             self._fp = codecs.open(self._temp_name, mode, encoding)
         else:
-            self._fp = open(self._temp_name, mode)
+            if sys.version_info > (3, 0):
+                self._fp = open(self._temp_name, mode, newline=newline)
+            else:
+                self._fp = open(self._temp_name, mode)
 
         # delegated methods
         self.write = self._fp.write
@@ -114,7 +119,8 @@ class AtomicFile(object):
             self.discard()
 
 
-def open_atomic(name, mode="w+b", permissions=None, encoding=None):
+def open_atomic(name, mode="w+b", permissions=None, encoding=None,
+                newline=None):
     """
     Aims to be the "equivalent" of the open() function returning an
     AtomicFile object.
@@ -122,5 +128,12 @@ def open_atomic(name, mode="w+b", permissions=None, encoding=None):
     if 'r' in mode or 'a' in mode or 'x' in mode:
         raise TypeError('Read or append modes are not implemented.')
 
+    if newline:
+        if sys.version_info < (3, 0):
+            raise TypeError("'newline' is an invalid keyword argument for this"
+                            "function in Python 2.")
+        if encoding:
+            raise TypeError("'newline' cannot be combined with encoding")
+
     return AtomicFile(name, mode=mode, permissions=permissions,
-                      encoding=encoding)
+                      encoding=encoding, newline=newline)
