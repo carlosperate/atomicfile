@@ -4,6 +4,7 @@ import unittest
 import codecs
 
 from atomicfile import AtomicFile
+from atomicfile import open_atomic
 
 
 def create_test_file(filename, content=b'test\n', mode=None):
@@ -55,6 +56,31 @@ class AtomicFileTest(unittest.TestCase):
             f.write(data)
             self.fail("'ValueError: I/O operation on closed file' not raised")
         except ValueError:
+            pass
+        finally:
+            os.remove(self.filename)
+
+    def test_open_atomic(self):
+        create_test_file(self.filename)
+        af = open_atomic(self.filename)
+        expected = b"this is written by AtomicFile from open_atomic.\n"
+        af.write(expected)
+        af.close()
+
+        f = open(self.filename, "rb")
+        result = f.read()
+        f.close()
+        try:
+            self.assertEqual(result, expected)
+        finally:
+            os.remove(self.filename)
+
+    def test_open_invalid_mode(self):
+        create_test_file(self.filename)
+        try:
+            open_atomic(self.filename, mode="a")
+            self.fail("'TypeError: Invalid mode did not raise error")
+        except TypeError:
             pass
         finally:
             os.remove(self.filename)

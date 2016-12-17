@@ -112,3 +112,15 @@ class AtomicFile(object):
     def __del__(self):
         if getattr(self, "_fp", None):  # constructor actually did something
             self.discard()
+
+
+def open_atomic(name, mode="w+b", permissions=None, encoding=None):
+    """
+    Aims to be the "equivalent" of the open() function returning an
+    AtomicFile object.
+    """
+    if 'r' in mode or 'a' in mode or 'x' in mode:
+        raise TypeError('Read or append modes are not implemented.')
+
+    return AtomicFile(name, mode=mode, permissions=permissions,
+                      encoding=encoding)
